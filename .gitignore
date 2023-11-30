@@ -1,0 +1,17 @@
+# Python
+*.py[cod]
+*.pyo
+*.pyd
+__pycache__
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.tar.gz
+
+
+# OS
+.DS_Store
+Thumbs.db
+venv/
