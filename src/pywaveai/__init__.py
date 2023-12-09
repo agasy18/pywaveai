@@ -1,4 +1,4 @@
-from .task import TaskType
+from .task import TaskType, TaskOptions, TaskResult
 from .app import WaveWorker
 from .image_io import BasicImageFileResolver
 

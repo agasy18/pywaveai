@@ -14,15 +14,14 @@ logger = getLogger(__name__)
 
 
 class AICAPISettings(BaseSettings):
-    API_BASE_URL: str = None
-    API_KEY: str = None
-    NODE_ID: str = None
+    API_BASE_URL: Optional[str] = None
+    API_KEY: Optional[str] = None
+    NODE_ID: Optional[str] = None
 
     class Config:
         env_file = getenv("AIC_API_CONFIG_FILE", ".env")
 
 settings = AICAPISettings()
-
 
 
 class AICTaskIOManager(TaskIOManager):

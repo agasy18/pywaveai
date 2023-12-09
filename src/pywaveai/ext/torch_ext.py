@@ -1,5 +1,6 @@
 import logging
 logger = logging.getLogger(__name__)
+from functools import wraps
 
 
 
@@ -23,5 +24,23 @@ class TorchMemoryTracker(object):
             'mx': torch.cuda.max_memory_reserved() // 1024 // 1024,
             'mn': torch.cuda.memory_reserved() // 1024 // 1024,
         }
+    
+
+def apply_extantion(task_info, func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        
+        torch_tracker = TorchMemoryTracker()
+        torch_tracker.reset_peak_memory_stats()
+        res = func(*args, **kwargs)
+        res.statistics['mx'] = torch_tracker.get_memory_stats()['mx']
+        res.statistics['mn'] = torch_tracker.get_memory_stats()['mn']
+        return res
+    return wrapper
+    
+    
+
+
+
 
         
