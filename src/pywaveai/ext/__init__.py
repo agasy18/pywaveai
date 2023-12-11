@@ -4,16 +4,18 @@ from . import gpu_lock_ext
 from . import gpu_time_ext
 
 
-extantions = [
+default_extantions = [
     # this must be first
     gpu_time_ext.apply_extantion,
 
     gpu_lock_ext.apply_extantion,
     torch_ext.apply_extantion,
     
-    # this must be last
-    automatic1111_ext.apply_extantion,
+    
 ]
+
+if automatic1111_ext.is_available():
+    default_extantions.append(automatic1111_ext.apply_extantion)
 
 
 def apply_extantions(task_info, func, extantions):

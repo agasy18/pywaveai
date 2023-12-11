@@ -4,3 +4,6 @@ fastapi
 pillow
 pydantic-settings
 uvicorn[standard]
+pytest-asyncio
+python-multipart
+testfixtures

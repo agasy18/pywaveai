@@ -1,29 +1,25 @@
 import pywaveai
-from pydantic import BaseModel
+from typing import Optional
 
-class EchoTaskOptions(BaseModel):
+class EchoTaskOptions(pywaveai.TaskOptions):
     message: str
-    files: dict
+    echo_error: Optional[str] = None
 
-class EchoResult(BaseModel):
+
+class EchoResult(pywaveai.TaskResult):
     message: str
     file_info: dict
-    files: dict
 
 
 worker =  pywaveai.WaveWorker()
 
-def echo_task(task: EchoTaskOptions):
+def echo_task(task: EchoTaskOptions) -> EchoResult:
+    if task.echo_error:
+        raise Exception(task.echo_error)
 
     return EchoResult(message=task.message, files=task.files, file_info={name: str(img) for name, img in task.files.items()})
 
-worker.register_task(pywaveai.TaskType(
-    task_type="echo",
-    func=echo_task,
-    options_type=EchoTaskOptions,
-    result_type=EchoResult,
-    resource_resolver=pywaveai.BasicImageFileResolver
-))
+worker.register_task("echo", echo_task, resource_resolver=pywaveai.BasicImageFileResolver)
 
 if __name__ == "__main__":
     worker.run()

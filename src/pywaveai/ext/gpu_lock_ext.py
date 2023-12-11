@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 from os import getenv
 from contextlib import contextmanager
-from filelock import FileLock, LockTimeout
+from filelock import FileLock, Timeout as LockTimeout
 from functools import wraps
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ settings = GPULockSettings()
 
 
 @contextmanager
-def wait_for_gpu():
+def wait_for_gpu(settings):
     if not settings.USE_GPU_LOCK:
         yield
         return
@@ -51,11 +51,11 @@ def wait_for_gpu():
             continue
 
 
-def apply_extantion(task_info, func):
+def apply_extantion(task_info, func, settings=settings):
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()
-        with wait_for_gpu():
+        with wait_for_gpu(settings=settings):
             res: TaskResult = func(*args, **kwargs)
         res.statistics['ld'] = time.time() - start_time
         return res

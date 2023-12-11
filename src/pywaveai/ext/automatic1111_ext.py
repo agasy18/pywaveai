@@ -1,9 +1,12 @@
 import asyncio
 import logging
 import sys
-from pywaveai.scheduler import RestartRequest
+from pywaveai.task import RestartRequest
 logger = logging.getLogger(__name__)
 from functools import wraps
+
+
+
 
 try:
     from modules import devices
@@ -11,6 +14,9 @@ except ImportError:
     logger.warning('modules.devices not found, automatic1111_ext will not work')
     devices = None
 
+
+def is_available():
+    return devices is not None
 
 def apply_extantion(task_info, func):
     @wraps(func)

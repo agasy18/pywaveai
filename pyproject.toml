@@ -31,7 +31,6 @@ Source = "https://github.com/agasy18/pywaveai"
 path = "src/pywaveai/__about__.py"
 
 [tool.hatch.envs.default]
-dependencies = ["coverage[toml]>=6.5", "pytest"]
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
 test-cov = "coverage run -m pytest {args:tests}"
@@ -44,12 +43,17 @@ python = ["3.9", "3.10", "3.11"]
 [tool.hatch.envs.lint]
 detached = true
 dependencies = [
+  "coverage[toml]>=6.5", 
+  "pytest", 
+  "pytest-asyncio",
+  "testfixtures",
   "black>=23.1.0",
   "mypy>=1.0.0",
   "ruff>=0.0.243",
   "httpx[http2]",
   "lockfile",
   "fastapi",
+  "python-multipart",
   "pillow",
   "pydantic-settings",
   "uvicorn[standard]",

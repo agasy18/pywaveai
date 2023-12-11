@@ -1,12 +1,17 @@
 import os
-from typing import Optional
+from typing import Optional, Dict
 from httpx import AsyncClient
-from pywaveai.task import Task, TaskIOManager, TaskType, TaskSource, TaskInfo
+from pywaveai.task import Task as BaseTask, TaskIOManager, TaskExectionInfo, TaskSource, TaskInfo
 
 from logging import getLogger
 from httpx import AsyncClient
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, File, Request
+from fastapi.responses import FileResponse
 from enum import Enum
+from pydantic import BaseModel
+
+
+from pywaveai.worker_api import worker_api
 
 logger = getLogger(__name__)
 
@@ -19,20 +24,27 @@ class TaskStatus(str, Enum):
     failed = "failed"
 
 
-class HTTPTaskInfo(TaskInfo):
-    def __init__(self, task: Task, task_type: TaskType, task_io_manager: TaskIOManager) -> None:
-        super().__init__(task, task_type, task_io_manager)
-        self.status = TaskStatus.draft
-        self.result = None
-        self.error = None
+class TaskStatusResponse(BaseModel):
+    id: str
+    status: TaskStatus
+
+
+class FileInfo(BaseModel):
+    filename: str
+
+
+class Task(BaseTask):
+    error: Optional[str] = None
+    result: Optional[dict] = None
+    status: TaskStatus = TaskStatus.draft
 
     def set_completed(self, result):
-        self.status = TaskStatus.completed
         self.result = result
+        self.status = TaskStatus.completed
 
-    def set_failed(self, error: str):
-        self.status = TaskStatus.failed
+    def set_failed(self, error):
         self.error = error
+        self.status = TaskStatus.failed
 
 
 result_dir = f'/tmp/http_api/results'
@@ -42,17 +54,15 @@ class AICTaskIOManager(TaskIOManager):
     def __init__(self) -> None:
         super().__init__()
 
-        self.tasks: dict[str, TaskInfo] = {}
         self.download_client = AsyncClient()
 
     async def mark_task_failed(self, task: Task, error: Exception):
         logger.error(f"Task {task.type} {task.id} failed")
-        logger.exception(error)
-        self.tasks[task.id].set_failed(str(error))
+        task.set_failed(str(error))
 
     async def mark_task_completed(self, task: Task, result):
         logger.info(f"Task {task.type} {task.id} completed")
-        self.tasks[task.id].set_completed(result)
+        task.set_completed(result)
 
     async def download_bytes(self, task: Task,  name: str, url: str) -> tuple[str, bytes]:
         response = await self.download_client.get(url)
@@ -70,40 +80,122 @@ class AICTaskIOManager(TaskIOManager):
 
 
 class HTTPTaskSource(TaskSource):
-    def __init__(self, supported_tasks: list[TaskType], **kwargs) -> None:
+    def __init__(self, supported_tasks: list[TaskExectionInfo], **kwargs) -> None:
         super().__init__(supported_tasks, **kwargs)
         self.task_io_manager = AICTaskIOManager()
         self.supported_tasks_dict = {
             task.type_name: task for task in supported_tasks}
 
+        self.tasks: Dict[str, Task] = {}
+
     async def fetch_task(self) -> Optional[TaskInfo]:
-        for task in self.task_io_manager.tasks.values():
-            if not task.status == TaskStatus.scheduled:
+        for task in self.tasks.values():
+            if task.status == TaskStatus.scheduled:
                 task.status = TaskStatus.in_progress
-                return task
+                return TaskInfo(task=task,
+                                execution_info=self.supported_tasks_dict[task.type],
+                                task_io_manager=self.task_io_manager)
         return None
 
+    def build_api_for_task_type(self, task_type: TaskExectionInfo) -> APIRouter:
+        router = APIRouter()
+
+        @router.post('/create')
+        async def create_task(queue_name: str = 'default'):
+            id = str(len(self.tasks))
+            self.tasks[id] = Task(
+                id=id,
+                type=task_type.type_name,
+            )
+
+            return TaskStatusResponse(id=id, status=TaskStatus.draft)
+
+        @router.post('/{id}/file/new')
+        async def new_file(id: str, file_info: FileInfo, request: Request):
+            url = str(request.url).replace('/new', file_info.filename)
+            return {
+                "url": url
+            }
+
+        @router.put('/{id}/file/{filename}')
+        async def upload_file(id: str, filename: str, file: bytes = File(...)):
+            os.makedirs(f'{result_dir}/{id}', exist_ok=True)
+            with open(f'{result_dir}/{id}/{filename}', 'wb') as f:
+                f.write(file)
+
+        @router.get('/{id}/file/{filename}')
+        async def download_file(id: str, filename: str):
+            return FileResponse(f'{result_dir}/{id}/{filename}')
+
+        
+        @router.post('/{id}/schedule', response_model=TaskStatusResponse)
+        async def schedule_task(id: str, options: task_type.options_type):
+            if id not in self.tasks:
+                raise HTTPException(status_code=404, detail="Task not found")
+            task = self.tasks[id]
+            
+            if task.status != TaskStatus.draft:
+                raise HTTPException(detail='Task is not in draft', status_code=403)
+            
+            task.options = options
+            task.status = TaskStatus.scheduled
+
+            return TaskStatusResponse(id=id, status=TaskStatus.scheduled)
+
+        @router.get('/{id}', response_model=TaskStatusResponse)
+        async def get_task_status(id: str):
+            if id not in self.tasks:
+                raise HTTPException(status_code=404, detail="Task not found")
+            task = self.tasks[id]
+            if task.status == TaskStatus.failed:
+                raise HTTPException(detail=task.error, status_code=509)
+            return TaskStatusResponse(id=id, status=task.status)
+
+        @router.delete('/{id}')
+        async def delete_task(id: str):
+            if id not in self.tasks:
+                raise HTTPException(status_code=404, detail="Task not found")
+
+            self.tasks[id].status = TaskStatus.failed
+            self.tasks[id].error = 'Task was deleted'
+
+            return {'status': 'ok'}
+
+        class TaskResultResponse(TaskStatusResponse):
+            result: task_type.result_type
+
+        @router.get('/{id}/result', response_model=TaskResultResponse)
+        async def get_task_result(id: str):
+            if id not in self.tasks:
+                raise HTTPException(status_code=404, detail="Task not found")
+
+            task = self.tasks[id]
+
+            if task.status == TaskStatus.failed:
+                raise HTTPException(detail=task.error, status_code=500)
+
+            if task.status != TaskStatus.completed:
+                raise HTTPException(detail='Task is not completed', status_code=403)
+
+            return TaskResultResponse(id=id, status=task.status, result=task.result)
+
+        return router
+
     def build_task_router(self) -> APIRouter:
-        router = APIRouter('/task')
+        router = APIRouter()
+
+        for task_type in self.supported_tasks_dict.values():
+            router.include_router(self.build_api_for_task_type(
+                task_type), prefix=f'/{task_type.type_name}')
+
+        return router
 
     def build_api_router(self) -> APIRouter:
         router = APIRouter()
-        router.add_api_route('/task', self.build_task_router())
+        router.include_router(self.build_task_router(), prefix='/task')
 
         @router.get('/api.json')
         async def api_json():
-            tasks = []
-            for task_type in self.supported_tasks:
-                tasks.append({
-                    "name": task_type.type_name,
-                    "options": task_type.options.schema(),
-                    "options_class": task_type.options.__name__,
-                    "result": task_type.result.schema(),
-                    "result_class": task_type.result.__name__,
-                    "doc": task_type.func.__doc__ or f'No documentation for {task_type.type_name}'
-                })
-            return {
-                "tasks": tasks
-            }
+            return worker_api(self.supported_tasks)
 
         return router

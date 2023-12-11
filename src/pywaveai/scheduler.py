@@ -2,7 +2,7 @@ import asyncio
 
 from filelock import FileLock
 from lockfile import LockTimeout
-from pywaveai.task import TaskType, TaskSource, TaskInfo
+from pywaveai.task import TaskExectionInfo, TaskSource, TaskInfo
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 from os import getenv
@@ -20,52 +20,16 @@ logger = logging.getLogger(__name__)
 
 
 class SchedulerSettings(BaseSettings):
-    GPU_LOCK_CHECK_INTERVAL: float = 0.1
-
-    GPU_LOCK_TIMEOUT: float = 3 * 60
-
-    USE_GPU_LOCK: bool = True
-
     PROCESSING_QUEUE_SIZE: int = 1
-
-    GPU_LOCK_FILE: str = "/var/run/lock/gpu/0.lock"
-
 
     class Config:
         env_file = getenv("SCHEDULER_CONFIG_FILE", ".env")
 
 settings = SchedulerSettings()
 
-class RestartRequest(SystemExit):
-    def __init__(self, exception: Exception, code: int=1):
-        super().__init__(code)
-        self.exception = exception
-
-
-@contextmanager
-def wait_for_gpu():
-    if not settings.USE_GPU_LOCK:
-        yield
-        return
-    # 100ms due to inner loop will be 10ms, this is not actual timeout, but a delay
-    lock = FileLock(settings.GPU_LOCK_FILE, timeout=settings.GPU_LOCK_CHECK_INTERVAL)
-    time0 = time.time()
-    while True:
-        if time.time() - time0 > settings.GPU_LOCK_TIMEOUT:
-            logger.warning(f"Failed to acquire GPU lock in {settings.GPU_LOCK_TIMEOUT} seconds, breaking the lock")
-            lock.break_lock()
-        try:
-            # give it some time to release the lock in order to avoid busy loop
-            time.sleep(settings.GPU_LOCK_CHECK_INTERVAL * 2)
-            with lock:
-                yield
-                break
-        except LockTimeout:
-            continue
-
 
 class Scheduler(object):
-    def __init__(self, supported_tasks: list[TaskType], sources: list[TaskSource], executor_extensions: list[callable]):
+    def __init__(self, supported_tasks: list[TaskExectionInfo], sources: list[TaskSource], executor_extensions: list[callable], settings: SchedulerSettings = settings):
         self.supported_tasks = supported_tasks
         self.sources = sources
         self.is_running = False
@@ -79,12 +43,12 @@ class Scheduler(object):
         if task_info is None:
             return None
         task = task_info.task
-        task_type = task_info.task_type
+        task_type = task_info.execution_info
         task_io_manager = task_info.task_io_manager
         try:
             logger.info(f"Got new task: {task.type} {task.id}")
-            options_type: BaseModel = task_type.options
-            task.options = options_type.model_validate(task.task.options)
+            options_type: BaseModel = task_type.options_type
+            task.options = options_type.model_validate(task.options)
             await task_info.resource_resolver.download_files(task, task_io_manager)
             return task_info
         except KeyboardInterrupt:
@@ -140,7 +104,7 @@ class Scheduler(object):
 
     
     async def _execute_task(self, task_info: TaskInfo):
-        call_f = apply_extantions(task_info, task_info.task_type.func, self.executor_extensions)
+        call_f = apply_extantions(task_info, task_info.execution_info.func, self.executor_extensions)
        
         result = await asyncio.to_thread(call_f, task_info.task.options)
         return result
@@ -168,8 +132,8 @@ class Scheduler(object):
                 await asyncio.sleep(1)
 
     async def complete_task(self, task_info: TaskInfo, result):
-        if not isinstance(result, task_info.task_type.result_type):
-            raise TypeError(f"Result is not of type {task_info.task_type.result} but {type(result)}")
+        if not isinstance(result, task_info.execution_info.result_type):
+            raise TypeError(f"Result is not of type {task_info.execution_info.result} but {type(result)}")
 
     async def start(self):
         self.is_running = True
@@ -180,8 +144,9 @@ class Scheduler(object):
     async def stop(self):
         if self.running_queue_tasks is not None:
             self.running_queue_tasks.cancel()
-            await self.running_queue_tasks
-
-
-
-
+            try:
+                await self.running_queue_tasks
+            except asyncio.CancelledError:
+                pass
+            
+            self.running_queue_tasks = None

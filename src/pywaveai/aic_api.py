@@ -3,7 +3,7 @@ from httpx import AsyncClient
 from pydantic_settings import BaseSettings
 from os import getenv
 from pywaveai.image_io import bytes2image
-from pywaveai.task import Task, TaskIOManager, TaskType, TaskSource, TaskInfo
+from pywaveai.task import Task as TaskBase, TaskIOManager, TaskExectionInfo, TaskSource, TaskInfo
 
 import asyncio
 from logging import getLogger
@@ -22,6 +22,9 @@ class AICAPISettings(BaseSettings):
         env_file = getenv("AIC_API_CONFIG_FILE", ".env")
 
 settings = AICAPISettings()
+
+class Task(TaskBase):
+    new_file: str
 
 
 class AICTaskIOManager(TaskIOManager):
@@ -106,7 +109,7 @@ class AICTaskIOManager(TaskIOManager):
         response.raise_for_status()
         return name, filename
     
-    async def fetch_new_task(self, supported_tasks: list[TaskType]) -> Task:
+    async def fetch_new_task(self, supported_tasks: list[TaskExectionInfo]) -> Task:
         task_types = list(supported_tasks.keys())
         
         next_url = f"{settings.API_BASE_URL}/node/{settings.NODE_ID}/tasks/next?retry_seconds=40"
@@ -121,7 +124,7 @@ class AICTaskIOManager(TaskIOManager):
 
 
 class AICTaskSource(TaskSource):
-    def __init__(self, supported_tasks: list[TaskType], **kwargs) -> None:
+    def __init__(self, supported_tasks: list[TaskExectionInfo], **kwargs) -> None:
         super().__init__(supported_tasks, **kwargs)
         self.task_io_manager = AICTaskIOManager()
         self.supported_tasks_dict = {task.type_name: task for task in supported_tasks}
@@ -133,4 +136,4 @@ class AICTaskSource(TaskSource):
         
         task_type = self.supported_tasks_dict[task.type]
         
-        return TaskInfo(task=task, task_type=task_type, task_io_manager=self.task_io_manager)
+        return TaskInfo(task=task, execution_info=task_type, task_io_manager=self.task_io_manager)
