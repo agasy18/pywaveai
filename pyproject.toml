@@ -28,6 +28,7 @@ dependencies = [
   "pillow",
   "pydantic-settings",
   "uvicorn[standard]",
+  "pyyaml==5.1.2",
 ]
 
 [project.urls]
@@ -46,7 +47,7 @@ dependencies = [
   "testfixtures",
   "black>=23.1.0",
   "mypy>=1.0.0",
-  "ruff>=0.0.243"
+  "ruff>=0.0.243",
 ]
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
