@@ -2,11 +2,10 @@ from PIL.Image import Image
 from PIL.Image import open as open_image
 import asyncio
 from tempfile import NamedTemporaryFile
-from .task import TaskResourceResolver
+from .task_io_manager import TaskIOManager
 from .task import Task
 from io import BytesIO
-
-
+from os import path
 
 async def image2bytes(img: Image, extension=".jpg"):
     with NamedTemporaryFile(suffix=extension, mode='w+b') as f:
@@ -14,7 +13,6 @@ async def image2bytes(img: Image, extension=".jpg"):
         f.seek(0)
         byte_array = f.read()
         return byte_array
-    
 
 async def bytes2image(byte_array: bytes) -> Image:
     stream = BytesIO(byte_array)
@@ -22,17 +20,13 @@ async def bytes2image(byte_array: bytes) -> Image:
     await asyncio.to_thread(img.load)
     return img
 
+async def download_image(url: str, task: Task, task_io_manager: TaskIOManager) -> Image:
+    byte_array = await task_io_manager.download_bytes(task, url)
+    return await bytes2image(byte_array)
 
-class BasicImageFileResolver(TaskResourceResolver):
-    def __init__(self, extension=".jpg"):
-        self.extension = extension
 
-    async def encode_to_bytes(self, task: Task, name: str, resource: object) -> tuple[str, str, bytes]:
-        assert isinstance(resource, Image)
-        image_bytes = await image2bytes(resource, extension=self.extension)
-        return name, name+self.extension, image_bytes
-    
-    async def decode_from_bytes(self, task: Task, name: str, byte_array: bytes) -> tuple[str, object]:
-        img = await bytes2image(byte_array)
-        return name, img
-    
+async def upload_image(filename: str, img: Image, task: Task, task_io_manager: TaskIOManager) -> str:
+    extension = path.splitext(filename)[1]
+    byte_array = await image2bytes(img, extension)
+    return await task_io_manager.upload_bytes(task, filename, byte_array)
+

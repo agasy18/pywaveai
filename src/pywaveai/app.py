@@ -1,14 +1,17 @@
 from pywaveai.scheduler import Scheduler
-from pywaveai.task import TaskSource
+from pywaveai.runtime import TaskSource
 from pywaveai.aic_api import AICTaskSource, settings as aic_settings
 from pywaveai.http_api import HTTPTaskSource
-from pywaveai.task import TaskExectionInfo, TaskResourceResolver
+from pywaveai.runtime import TaskExectionInfo
 from fastapi import FastAPI
 import uvicorn
 from pydantic_settings import BaseSettings
 from os import getenv
 from pywaveai.ext import default_extantions
 from contextlib import asynccontextmanager
+from inspect import signature
+from pywaveai.task import TaskResult, TaskOptions
+from .worker_api import worker_api
 
 import logging
 
@@ -67,14 +70,71 @@ class WaveWorker(object):
         yield
         await self.scheduler.stop()
 
-    def register_task(self, name: str, func, resource_resolver: TaskResourceResolver):
-        task_type = TaskExectionInfo(name + settings.DEPLOYMENT_POSTFIX,
-                             func, resource_resolver)
+    def register_task(self, name: str,
+                      func: callable,
+                      options_type: type = None,
+                      result_type: type = None,
+                      documantation: str = None,
+                      preprocessing_func: callable = None,
+                      postprocessing_func: callable = None):
+
+        if not callable(func):
+            raise TypeError(
+                f"Task function must be callable instead of {func}")
+
+        if result_type is None:
+            result_type = signature(func).return_annotation
+
+        if not (issubclass(result_type, TaskResult) or result_type == TaskResult):
+            raise TypeError(
+                f"Task result type must be a subclass of TaskResult instead of {result_type}")
+
+        if len(signature(func).parameters) != 1:
+            raise TypeError("Task function must have exactly one parameter")
+
+        if options_type is None:
+            options_type = next(
+                iter(signature(func).parameters.values())).annotation
+
+        if not (issubclass(options_type, TaskOptions) or options_type == TaskOptions):
+            raise TypeError(
+                f"Task options type must be a subclass of TaskOptions instead of {options_type}")
+
+        if hasattr(options_type, '__call__') and preprocessing_func is None:
+            preprocessing_func = options_type.__call__
+
+        if hasattr(result_type, '__call__') and postprocessing_func is None:
+            postprocessing_func = result_type.__call__
+
+        if preprocessing_func is not None and not callable(preprocessing_func):
+            raise TypeError(
+                f"Task preprocessing function must be async callable instead of {preprocessing_func}")
+
+        if postprocessing_func is not None and not callable(postprocessing_func):
+            raise TypeError(
+                f"Task postprocessing function must be async callable instead of {postprocessing_func}")
+
+        if documantation is None:
+            if func.__doc__ is None:
+                documantation = f'No documentation for {func.__name__}'
+            else:
+                documantation = func.__doc__
+
+        task_type = TaskExectionInfo(
+            task_name=name + settings.DEPLOYMENT_POSTFIX, 
+            func=func,
+            options_type=options_type,
+            result_type=result_type,
+            documantation=documantation,
+            preprocessing_func=preprocessing_func,
+            postprocessing_func=postprocessing_func
+        )
+                                     
         self.supported_tasks.append(task_type)
 
     def build(self):
         loaded_sources = [source(self.supported_tasks)
-                                for source in self.sources]
+                          for source in self.sources]
 
         for source in loaded_sources:
             router = source.build_api_router()
@@ -89,3 +149,7 @@ class WaveWorker(object):
                     host=settings.WORKER_HOST,
                     port=settings.WORKER_PORT,
                     log_level=settings.WORKER_LOG_LEVEL)
+
+
+    def generate_api(self):
+        return worker_api(self.supported_tasks)

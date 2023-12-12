@@ -1,7 +1,8 @@
 import time
 
 import logging
-from pywaveai.task import TaskResult, TaskInfo
+from pywaveai.runtime import TaskInfo
+from pywaveai.task import TaskResult
 from functools import wraps
 
 

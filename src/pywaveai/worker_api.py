@@ -1,4 +1,4 @@
-from pywaveai.task import TaskExectionInfo
+from pywaveai.runtime import TaskExectionInfo
 
 
 def worker_api(supported_tasks: list[TaskExectionInfo]):
@@ -21,7 +21,7 @@ def worker_api(supported_tasks: list[TaskExectionInfo]):
     tasks = []
     for task_type in supported_tasks:
         tasks.append({
-            "name": task_type.type_name,
+            "name": task_type.task_name,
             "options": task_type.options_type.model_json_schema(),
             "options_class": task_type.options_type.__name__,
             "result": task_type.result_type.model_json_schema(),

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from pywaveai.task import RestartRequest
+from pywaveai.runtime import RestartRequest
 logger = logging.getLogger(__name__)
 from functools import wraps
 

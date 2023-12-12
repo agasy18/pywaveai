@@ -1,10 +1,13 @@
 import asyncio
 import pytest
 from unittest.mock import MagicMock
+from pywaveai.task_io_manager import TaskIOManager
+from pywaveai.runtime import TaskInfo
+from pywaveai.runtime import TaskExectionInfo, TaskSource
 
 
-from pywaveai.scheduler import Scheduler, TaskInfo, TaskSource, TaskExectionInfo
-from pywaveai.task import TaskResult, TaskOptions, TaskIOManager, Task
+from pywaveai.scheduler import Scheduler
+from pywaveai.task import TaskResult, TaskOptions, Task
 from pywaveai.image_io import BasicImageFileResolver
 from pywaveai.ext import gpu_time_ext
 
@@ -41,7 +44,7 @@ def func(options: TaskOptions) -> TaskResult:
 def scheduler():
     supported_tasks = [
         TaskExectionInfo(
-            type_name="test_type",
+            task_name="test_type",
             func=func, 
             resource_resolver=BasicImageFileResolver,
         )

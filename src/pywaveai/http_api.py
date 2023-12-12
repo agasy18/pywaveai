@@ -1,7 +1,10 @@
 import os
 from typing import Optional, Dict
 from httpx import AsyncClient
-from pywaveai.task import Task as BaseTask, TaskIOManager, TaskExectionInfo, TaskSource, TaskInfo
+from pywaveai.task_io_manager import TaskIOManager
+from pywaveai.runtime import TaskInfo
+from pywaveai.runtime import TaskExectionInfo, TaskSource
+from pywaveai.task import Task as BaseTask, TaskResult
 
 from logging import getLogger
 from httpx import AsyncClient
@@ -34,6 +37,7 @@ class FileInfo(BaseModel):
 
 
 class Task(BaseTask):
+    task_url: str
     error: Optional[str] = None
     result: Optional[dict] = None
     status: TaskStatus = TaskStatus.draft
@@ -60,23 +64,23 @@ class AICTaskIOManager(TaskIOManager):
         logger.error(f"Task {task.type} {task.id} failed")
         task.set_failed(str(error))
 
-    async def mark_task_completed(self, task: Task, result):
+    async def mark_task_completed(self, task: Task, result: TaskResult):
         logger.info(f"Task {task.type} {task.id} completed")
         task.set_completed(result)
 
-    async def download_bytes(self, task: Task,  name: str, url: str) -> tuple[str, bytes]:
+    async def download_bytes(self, task: Task, url: str) -> bytes:
         response = await self.download_client.get(url)
         response.raise_for_status()
-        return name, await response.aread()
+        return await response.aread()
 
-    async def upload_bytes(self, task: Task, name: str, filename: str, byte_array: bytes) -> tuple[str, str]:
+    async def upload_bytes(self, task: Task, filename: str, byte_array: bytes) -> str:
         tmp_dir = f'{result_dir}/{task.id}'
         os.makedirs(tmp_dir, exist_ok=True)
 
         with open(f'{tmp_dir}/{filename}', 'wb') as f:
             f.write(byte_array)
 
-        return name, filename
+        return f'{task.task_url}/file/{filename}'
 
 
 class HTTPTaskSource(TaskSource):
@@ -84,7 +88,7 @@ class HTTPTaskSource(TaskSource):
         super().__init__(supported_tasks, **kwargs)
         self.task_io_manager = AICTaskIOManager()
         self.supported_tasks_dict = {
-            task.type_name: task for task in supported_tasks}
+            task.task_name: task for task in supported_tasks}
 
         self.tasks: Dict[str, Task] = {}
 
@@ -101,12 +105,15 @@ class HTTPTaskSource(TaskSource):
         router = APIRouter()
 
         @router.post('/create')
-        async def create_task(queue_name: str = 'default'):
+        async def create_task(request: Request, queue_name: str = 'default'):
             id = str(len(self.tasks))
             self.tasks[id] = Task(
                 id=id,
-                type=task_type.type_name,
+                type=task_type.task_name,
+                task_url=str(request.url).replace('/create', f'/{id}'),
             )
+
+
 
             return TaskStatusResponse(id=id, status=TaskStatus.draft)
 
@@ -186,7 +193,7 @@ class HTTPTaskSource(TaskSource):
 
         for task_type in self.supported_tasks_dict.values():
             router.include_router(self.build_api_for_task_type(
-                task_type), prefix=f'/{task_type.type_name}')
+                task_type), prefix=f'/{task_type.task_name}')
 
         return router
 

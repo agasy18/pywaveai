@@ -2,8 +2,11 @@ from typing import Any, Optional
 from httpx import AsyncClient
 from pydantic_settings import BaseSettings
 from os import getenv
+from pywaveai.task_io_manager import TaskIOManager
+from pywaveai.runtime import TaskInfo
+from pywaveai.runtime import TaskExectionInfo, TaskSource
 from pywaveai.image_io import bytes2image
-from pywaveai.task import Task as TaskBase, TaskIOManager, TaskExectionInfo, TaskSource, TaskInfo
+from pywaveai.task import Task as TaskBase, TaskResult
 
 import asyncio
 from logging import getLogger
@@ -49,7 +52,6 @@ class AICTaskIOManager(TaskIOManager):
 
     async def mark_task_failed(self, task: Task, error: Exception):
         logger.error(f"Task {task.type} {task.id} failed")
-        logger.exception(error)
 
         for retry in range(3):
             try:
@@ -72,7 +74,7 @@ class AICTaskIOManager(TaskIOManager):
         else:
             logger.error(f"Failed to report an error for task {task.type} {task.id} after 3 retries")
 
-    async def mark_task_completed(self, task: Task, result):
+    async def mark_task_completed(self, task: Task, result: TaskResult):
         for retry in range(3):
             try:
                 response = await self.api_client.post(task.result, json=result)
@@ -90,14 +92,13 @@ class AICTaskIOManager(TaskIOManager):
         else:
             logger.error(f"Failed to report a result for task {task.type} {task.id} after 3 retries")
 
-    async def download_bytes(self, task: Task,  name: str, url: str) -> tuple[str, bytes]:
+    async def download_bytes(self, task: Task, url: str) -> bytes:
         response = await self.download_client.get(url)
         response.raise_for_status()
         bytes_array = await response.aread()
-        return name, bytes_array
+        return bytes_array
 
-    async def upload_bytes(self, task: Task, name: str, filename: str, byte_array: bytes) -> tuple[str, str]:
-        
+    async def upload_bytes(self, task: Task, filename: str, byte_array: bytes) -> str:
         response = await self.api_client.post(task.new_file, json={
             "filename": filename,
         })
@@ -107,7 +108,7 @@ class AICTaskIOManager(TaskIOManager):
         logger.debug(f"Uploading {filename} to {file_url}")
         response = await self.upload_client.put(file_url, data=byte_array)
         response.raise_for_status()
-        return name, filename
+        return filename
     
     async def fetch_new_task(self, supported_tasks: list[TaskExectionInfo]) -> Task:
         task_types = list(supported_tasks.keys())
@@ -119,7 +120,7 @@ class AICTaskIOManager(TaskIOManager):
         response.raise_for_status()
         if response.status_code == 204:
             return None
-        return Task.validate(response.json())
+        return Task.model_validate(response.json())
 
 
 
@@ -127,7 +128,7 @@ class AICTaskSource(TaskSource):
     def __init__(self, supported_tasks: list[TaskExectionInfo], **kwargs) -> None:
         super().__init__(supported_tasks, **kwargs)
         self.task_io_manager = AICTaskIOManager()
-        self.supported_tasks_dict = {task.type_name: task for task in supported_tasks}
+        self.supported_tasks_dict = {task.task_name: task for task in supported_tasks}
 
     async def fetch_task(self) -> Optional[TaskInfo]:
         task = await self.task_io_manager.fetch_new_task(self.supported_tasks)

@@ -38,8 +38,7 @@ def apply_extantion(task_info, func):
         torch_tracker = TorchMemoryTracker()
         torch_tracker.reset_peak_memory_stats()
         res = func(*args, **kwargs)
-        res.statistics['mx'] = torch_tracker.get_memory_stats()['mx']
-        res.statistics['mn'] = torch_tracker.get_memory_stats()['mn']
+        res.statistics.update(torch_tracker.get_memory_stats())
         return res
     return wrapper
     

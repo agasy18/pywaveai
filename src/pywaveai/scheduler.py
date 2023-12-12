@@ -2,7 +2,8 @@ import asyncio
 
 from filelock import FileLock
 from lockfile import LockTimeout
-from pywaveai.task import TaskExectionInfo, TaskSource, TaskInfo
+from pywaveai.runtime import TaskExectionInfo, TaskSource
+from pywaveai.runtime import TaskInfo
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 from os import getenv
@@ -43,13 +44,14 @@ class Scheduler(object):
         if task_info is None:
             return None
         task = task_info.task
-        task_type = task_info.execution_info
+        exec_info = task_info.execution_info
         task_io_manager = task_info.task_io_manager
         try:
             logger.info(f"Got new task: {task.type} {task.id}")
-            options_type: BaseModel = task_type.options_type
+            options_type: BaseModel = exec_info.options_type
             task.options = options_type.model_validate(task.options)
-            await task_info.resource_resolver.download_files(task, task_io_manager)
+            if exec_info.preprocessing_func:
+                task.options = await exec_info.preprocessing_func(task.options, task, task_io_manager)
             return task_info
         except KeyboardInterrupt:
             raise
@@ -96,7 +98,7 @@ class Scheduler(object):
             except (KeyboardInterrupt, SystemExit, asyncio.CancelledError) as e:
                 raise
             except Exception as e:
-                logger.exception(e)
+                logger.exception("Exception in task fetching phase")
                 await asyncio.sleep(5)
         else:
             logger.error("Failed to fetch task from sources, restarting")
@@ -127,13 +129,26 @@ class Scheduler(object):
                 await self.report_an_error(task_info, e)
                 raise
             except Exception as e:
-                logger.exception(e)
+                logger.exception("Exception in task processing phase")
                 self.report_an_error_in_bg(task_info, e)
                 await asyncio.sleep(1)
 
     async def complete_task(self, task_info: TaskInfo, result):
-        if not isinstance(result, task_info.execution_info.result_type):
-            raise TypeError(f"Result is not of type {task_info.execution_info.result} but {type(result)}")
+        try:
+            exec_info = task_info.execution_info
+
+            if exec_info.postprocessing_func:
+                result = await exec_info.postprocessing_func(result, task_info.task, task_info.task_io_manager)
+            if not isinstance(result, task_info.execution_info.result_type):
+                raise TypeError(f"Result is not of type {task_info.execution_info.result_type} but {type(result)}")
+            await task_info.task_io_manager.mark_task_completed(task_info.task, result)
+        except Exception as e:
+            logger.exception("Exception in task postprocessing phase")
+            await self.report_an_error(task_info, e)
+            if isinstance(e, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)):
+                raise
+            
+
 
     async def start(self):
         self.is_running = True
