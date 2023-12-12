@@ -6,7 +6,7 @@ from testfixtures import compare
 @pytest.fixture
 def client():
     from samples.echo.main import worker
-    with TestClient(worker.fastapi_app) as client:
+    with TestClient(worker.build_http_api()) as client:
         yield client
 
 

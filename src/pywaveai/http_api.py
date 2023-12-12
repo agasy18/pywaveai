@@ -113,8 +113,6 @@ class HTTPTaskSource(TaskSource):
                 task_url=str(request.url).replace('/create', f'/{id}'),
             )
 
-
-
             return TaskStatusResponse(id=id, status=TaskStatus.draft)
 
         @router.post('/{id}/file/new')

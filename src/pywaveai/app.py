@@ -59,16 +59,31 @@ class WaveWorker(object):
         self.sources = sources
         self.extensions = extensions
         self.supported_tasks = []
-        self.fastapi_app = FastAPI(title=settings.WORKER_TITLE,
-                                   lifespan=self._lifespan)
-        self.scheduler = None
+        
+                
 
     @asynccontextmanager
     async def _lifespan(self, app):
-        self.build()
-        await self.scheduler.start()
+
+        loaded_sources = [source(self.supported_tasks)
+                                for source in self.sources]
+        for source in loaded_sources:
+            router = source.build_api_router()
+            if router:
+                app.include_router(router)
+
+        scheduler = self.scheduler_class(
+            self.supported_tasks, loaded_sources, self.extensions)
+        
+        await scheduler.start()
         yield
-        await self.scheduler.stop()
+        await scheduler.stop()
+
+    def build_http_api(self):
+        app = FastAPI(title=settings.WORKER_TITLE,
+                                   lifespan=self._lifespan)
+        return app
+
 
     def register_task(self, name: str,
                       func: callable,
@@ -132,20 +147,10 @@ class WaveWorker(object):
                                      
         self.supported_tasks.append(task_type)
 
-    def build(self):
-        loaded_sources = [source(self.supported_tasks)
-                          for source in self.sources]
-
-        for source in loaded_sources:
-            router = source.build_api_router()
-            if router:
-                self.fastapi_app.include_router(router)
-
-        self.scheduler = self.scheduler_class(
-            self.supported_tasks, loaded_sources, self.extensions)
-
+        
     def run(self):
-        uvicorn.run(self.fastapi_app,
+        app = self.build_http_api()
+        uvicorn.run(app,
                     host=settings.WORKER_HOST,
                     port=settings.WORKER_PORT,
                     log_level=settings.WORKER_LOG_LEVEL)
