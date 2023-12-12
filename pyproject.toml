@@ -27,8 +27,7 @@ dependencies = [
   "python-multipart",
   "pillow",
   "pydantic-settings",
-  "uvicorn[standard]",
-  "pyyaml==5.1.2",
+  "uvicorn[standard]"
 ]
 
 [project.urls]
