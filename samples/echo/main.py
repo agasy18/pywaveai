@@ -19,7 +19,7 @@ def echo_task(task: EchoTaskOptions) -> EchoResult:
 
     return EchoResult(message=task.message, files=task.files, file_info={name: str(img) for name, img in task.files.items()})
 
-worker.register_task("echo", echo_task, resource_resolver=pywaveai.BasicImageFileResolver)
+worker.register_task("echo", echo_task, resource_resolver=pywaveai.BasicImageFileResolver())
 
 if __name__ == "__main__":
     worker.run()

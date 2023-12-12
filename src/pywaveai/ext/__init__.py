@@ -11,12 +11,8 @@ default_extantions = [
     gpu_lock_ext.apply_extantion,
     torch_ext.apply_extantion,
     
-    
+    automatic1111_ext.apply_extantion
 ]
-
-if automatic1111_ext.is_available():
-    default_extantions.append(automatic1111_ext.apply_extantion)
-
 
 def apply_extantions(task_info, func, extantions):
     for ext in extantions:

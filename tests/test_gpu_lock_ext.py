@@ -17,9 +17,7 @@ def func():
 
 def test_apply_extantion(func):
 
-    func = apply_extantion(None, func, settings=GPULockSettings(
-        GPU_LOCK_FILE="/tmp/test.lock",
-    ))
+    func = apply_extantion(None, func)
 
     res = func("input")
 

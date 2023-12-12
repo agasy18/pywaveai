@@ -15,10 +15,11 @@ except ImportError:
     devices = None
 
 
-def is_available():
-    return devices is not None
 
 def apply_extantion(task_info, func):
+    if devices is None:
+        return func
+    
     @wraps(func)
     def wrapper(*args, **kwargs):
         

@@ -11,6 +11,8 @@ except ImportError:
     torch = None
 
 
+
+
 class TorchMemoryTracker(object):
     def reset_peak_memory_stats(self):
         if torch is not None:
@@ -27,6 +29,9 @@ class TorchMemoryTracker(object):
     
 
 def apply_extantion(task_info, func):
+    if torch is None:
+        return func
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         
