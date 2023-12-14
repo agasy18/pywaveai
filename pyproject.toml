@@ -23,10 +23,10 @@ classifiers = [
 dependencies = [
   "httpx[http2]",
   "lockfile",
-  "fastapi",
+  "fastapi==0.105.0",
   "python-multipart",
   "pillow",
-  "pydantic-settings",
+  "pydantic-settings==2.1.0",
   "uvicorn[standard]"
 ]
 
