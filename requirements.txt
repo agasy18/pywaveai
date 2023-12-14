@@ -1,5 +1,5 @@
 httpx[http2]
-lockfile
+filelock
 fastapi
 pillow
 pydantic-settings

@@ -56,8 +56,9 @@ def apply_extantion(task_info, func, settings=settings):
     def wrapper(*args, **kwargs):
         start_time = time.time()
         with wait_for_gpu(settings=settings):
+            end_time = time.time()
             res: TaskResult = func(*args, **kwargs)
-        res.statistics['ld'] = time.time() - start_time
+        res.statistics['ld'] = end_time - start_time
         return res
     return wrapper
 
