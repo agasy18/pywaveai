@@ -110,7 +110,7 @@ class HTTPTaskSource(TaskSource):
             self.tasks[id] = Task(
                 id=id,
                 type=task_type.task_name,
-                task_url=str(request.url).replace('/create', f'/{id}'),
+                task_url=f'{request.base_url}task/{task_type.task_name}/{id}'
             )
 
             return TaskStatusResponse(id=id, status=TaskStatus.draft)

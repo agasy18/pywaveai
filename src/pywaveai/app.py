@@ -148,12 +148,33 @@ class WaveWorker(object):
         self.supported_tasks.append(task_type)
 
         
-    def run(self):
-        app = self.build_http_api()
-        uvicorn.run(app,
-                    host=settings.WORKER_HOST,
-                    port=settings.WORKER_PORT,
-                    log_level=settings.WORKER_LOG_LEVEL)
+    def run(self, app_path: str = None):
+        """
+        Run the worker
+        if app_path is None, the worker will run with uvicorn with reload option 
+        
+        if app_path is provided, the worker will run with uvicorn without reload option
+        Example:
+        # app/main.py
+        app = worker.build_http_api()
+        worker.run('app.main:app')
+        """
+        
+        if app_path is None:
+            logger.info("Starting worker, without reloading option, read worker.run() docs for more info")
+            app = self.build_http_api()
+            uvicorn.run(app,
+                        host=settings.WORKER_HOST,
+                        port=settings.WORKER_PORT,
+                        log_level=settings.WORKER_LOG_LEVEL)
+
+        else:
+            logger.info("Starting worker, with reloading option")
+            uvicorn.run(app_path,
+                        host=settings.WORKER_HOST,
+                        port=settings.WORKER_PORT,
+                        log_level=settings.WORKER_LOG_LEVEL,
+                        reload=settings.WORKER_RELOAD)
 
 
     def generate_api(self):
