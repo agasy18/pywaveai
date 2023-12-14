@@ -63,10 +63,14 @@ class AICTaskIOManager(TaskIOManager):
     async def mark_task_failed(self, task: Task, error: Exception):
         logger.error(f"Task {task.type} {task.id} failed")
         task.set_failed(str(error))
+        with open(f'{result_dir}/{task.id}/error.txt', 'w') as f:
+            f.write(str(error))
 
     async def mark_task_completed(self, task: Task, result: TaskResult):
         logger.info(f"Task {task.type} {task.id} completed")
         task.set_completed(result)
+        with open(f'{result_dir}/{task.id}/result.json', 'w') as f:
+            f.write(result.model_dump_json(indent=2))
 
     async def download_bytes(self, task: Task, url: str) -> bytes:
         if url.startswith('http'):
@@ -79,8 +83,6 @@ class AICTaskIOManager(TaskIOManager):
 
     async def upload_bytes(self, task: Task, filename: str, byte_array: bytes) -> str:
         tmp_dir = f'{result_dir}/{task.id}'
-        os.makedirs(tmp_dir, exist_ok=True)
-
         with open(f'{tmp_dir}/{filename}', 'wb') as f:
             f.write(byte_array)
 
@@ -116,7 +118,7 @@ class HTTPTaskSource(TaskSource):
                 type=task_type.task_name,
                 task_url=f'{request.base_url}task/{task_type.task_name}/{id}'
             )
-
+            os.makedirs(f'{result_dir}/{id}', exist_ok=True)
             return TaskStatusResponse(id=id, status=TaskStatus.draft)
 
         @router.post('/{id}/file/new')
@@ -128,7 +130,6 @@ class HTTPTaskSource(TaskSource):
 
         @router.put('/{id}/file/{filename}')
         async def upload_file(id: str, filename: str, file: bytes = File(...)):
-            os.makedirs(f'{result_dir}/{id}', exist_ok=True)
             with open(f'{result_dir}/{id}/{filename}', 'wb') as f:
                 f.write(file)
 
@@ -148,6 +149,9 @@ class HTTPTaskSource(TaskSource):
             
             task.options = options
             task.status = TaskStatus.scheduled
+
+            with open(f'{result_dir}/{id}/options.json', 'w') as f:
+                f.write(options.model_dump_json(indent=2))
 
             return TaskStatusResponse(id=id, status=TaskStatus.scheduled)
 
@@ -195,7 +199,7 @@ class HTTPTaskSource(TaskSource):
 
         for task_type in self.supported_tasks_dict.values():
             router.include_router(self.build_api_for_task_type(
-                task_type), prefix=f'/{task_type.task_name}')
+                task_type), prefix=f'/{task_type.task_name}', tags=[task_type.task_name])
 
         return router
 
