@@ -28,6 +28,19 @@ settings = AICAPISettings()
 
 class Task(TaskBase):
     new_file: str
+    error: str
+    result: str
+
+def raise_for_status(response):
+    try:
+        response.raise_for_status()
+    except Exception as e:
+        try:
+            js = response.json()
+            logger.error(f"Erorr - {js} with status code {response.status_code}")
+        except Exception:
+            pass
+        raise e
 
 
 class AICTaskIOManager(TaskIOManager):
@@ -60,7 +73,7 @@ class AICTaskIOManager(TaskIOManager):
                     "message": str(error)
                 })
 
-                response.raise_for_status()
+                raise_for_status(response)
             except RequestError as e:
                 self.init_api_client()
                 logger.error(f"Failed to report an error for task {task.type} {task.id} retrying in 1 second")
@@ -75,10 +88,14 @@ class AICTaskIOManager(TaskIOManager):
             logger.error(f"Failed to report an error for task {task.type} {task.id} after 3 retries")
 
     async def mark_task_completed(self, task: Task, result: TaskResult):
+        last_error = None
         for retry in range(3):
             try:
-                response = await self.api_client.post(task.result, json=result)
-                response.raise_for_status()
+                js = result.model_dump()
+                if 'statistics' in js:
+                    js['st'] = js.pop('statistics')
+                response = await self.api_client.post(task.result, json=js)
+                raise_for_status(response)
             except RequestError as e:
                 self.init_api_client()
                 logger.error(f"Failed to report a result for task {task.type} {task.id} retrying in 1 second")
@@ -86,15 +103,19 @@ class AICTaskIOManager(TaskIOManager):
             except Exception as e:
                 logger.error(f"Failed to report a result for task {task.type} {task.id}")
                 logger.exception(e)
+                last_error = e
                 await asyncio.sleep(1)
             else:
                 break
         else:
             logger.error(f"Failed to report a result for task {task.type} {task.id} after 3 retries")
 
+            if last_error is not None:
+                await self.mark_task_failed(task, last_error)
+
     async def download_bytes(self, task: Task, url: str) -> bytes:
         response = await self.download_client.get(url)
-        response.raise_for_status()
+        raise_for_status(response)
         bytes_array = await response.aread()
         return bytes_array
 
@@ -102,25 +123,32 @@ class AICTaskIOManager(TaskIOManager):
         response = await self.api_client.post(task.new_file, json={
             "filename": filename,
         })
-        response.raise_for_status()
+        raise_for_status(response)
         file_url = response.json()['url']
             
         logger.debug(f"Uploading {filename} to {file_url}")
         response = await self.upload_client.put(file_url, data=byte_array)
-        response.raise_for_status()
+        raise_for_status(response)
         return filename
     
     async def fetch_new_task(self, supported_tasks: list[TaskExectionInfo]) -> Task:
-        task_types = list(supported_tasks.keys())
+        supported_tasks_dict = {task.task_name: task for task in supported_tasks}
+        task_types = list(supported_tasks_dict.keys())
         
         next_url = f"{settings.API_BASE_URL}/node/{settings.NODE_ID}/tasks/next?retry_seconds=40"
         response = await self.api_client.post(next_url, json={
             "task_types": task_types
         }, timeout=60)
-        response.raise_for_status()
+        raise_for_status(response)
         if response.status_code == 204:
             return None
-        return Task.model_validate(response.json())
+        js = response.json()
+
+        task = Task.model_validate(js)
+
+        tx = supported_tasks_dict[task.type]
+        task.options = tx.options_type.model_validate(js['options'])
+        return task
 
 
 

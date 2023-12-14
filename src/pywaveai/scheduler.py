@@ -57,6 +57,7 @@ class Scheduler(object):
             raise
         except Exception as e:
             logger.exception(e)
+            logger.error(f"Failed to process task {task.type} {task.id} with options {task.options}")
             self.report_an_error_in_bg(task_info, e)
         
         return None

@@ -69,9 +69,13 @@ class AICTaskIOManager(TaskIOManager):
         task.set_completed(result)
 
     async def download_bytes(self, task: Task, url: str) -> bytes:
-        response = await self.download_client.get(url)
-        response.raise_for_status()
-        return await response.aread()
+        if url.startswith('http'):
+            response = await self.download_client.get(url)
+            response.raise_for_status()
+            return await response.aread()
+        else:
+            with open(f'{result_dir}/{task.id}/{url}', 'rb') as f:
+                return f.read()
 
     async def upload_bytes(self, task: Task, filename: str, byte_array: bytes) -> str:
         tmp_dir = f'{result_dir}/{task.id}'
@@ -117,7 +121,7 @@ class HTTPTaskSource(TaskSource):
 
         @router.post('/{id}/file/new')
         async def new_file(id: str, file_info: FileInfo, request: Request):
-            url = str(request.url).replace('/new', file_info.filename)
+            url = str(request.url).replace('/new', '/' + file_info.filename)
             return {
                 "url": url
             }
