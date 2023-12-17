@@ -12,6 +12,17 @@
             "program": "${workspaceFolder}/samples/echo/main.py",
             "console": "integratedTerminal",
             "justMyCode": true
-        }
+        },
+        {
+            "name": "Echo TEST",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/samples/echo/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "TEST":"samples/echo/tests"
+            }
+        },
     ]
 }

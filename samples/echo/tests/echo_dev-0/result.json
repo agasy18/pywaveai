@@ -1,0 +1,15 @@
+{
+  "files": {
+    "file1": "http://localhost:8000/task/echo_dev/echo_dev-0/file/result_file1.png",
+    "file2": "http://localhost:8000/task/echo_dev/echo_dev-0/file/result_file2.png"
+  },
+  "statistics": {
+    "d": 0.00007653236389160156,
+    "ld": 0.20051217079162598
+  },
+  "message": "Hello World",
+  "file_info": {
+    "file1": "(92, 30)",
+    "file2": "(184, 60)"
+  }
+}

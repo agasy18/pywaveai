@@ -71,7 +71,6 @@ async def test_schedule_and_fetch(http_source: HTTPTaskSource, api_client: TestC
 
     response.raise_for_status()
 
-
     response = api_client.post(f'/task/test/{task_id}/schedule', json={
         'files': {
             'f': 'test.txt',
@@ -145,8 +144,3 @@ async def test_schedule_and_fetch_with_error(http_source: HTTPTaskSource, api_cl
     assert response.status_code == 500
 
     assert response.json()['detail'] == 'test error'
-
-
-    
-
-

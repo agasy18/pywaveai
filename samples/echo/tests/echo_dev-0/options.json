@@ -1,0 +1,7 @@
+{
+    "message": "Hello World",
+    "files": {
+        "file1": "1.png",
+        "file2": "2.png"
+    }
+}

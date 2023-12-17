@@ -34,7 +34,7 @@ class EchoResult(pywaveai.TaskResult):
         for name, img in self.loaded_images.items():
             source_url = task.options.files[name]
             ext = source_url.split('.')[-1]
-            url = await upload_image('result_' + name + '.' + ext, img, task, task_io_manager)
+            url = await upload_image(name + '.' + ext, img, task, task_io_manager)
             self.files[name] = url
 
         return self

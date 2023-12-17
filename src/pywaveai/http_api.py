@@ -1,30 +1,17 @@
-import os
 from typing import Optional, Dict
-from httpx import AsyncClient
-from pywaveai.task_io_manager import TaskIOManager
+from pywaveai.http_task import HTTPTaskIOManager, Task, TaskStatus
 from pywaveai.runtime import TaskInfo
 from pywaveai.runtime import TaskExectionInfo, TaskSource
-from pywaveai.task import Task as BaseTask, TaskResult
 
 from logging import getLogger
-from httpx import AsyncClient
 from fastapi import APIRouter, HTTPException, File, Request
 from fastapi.responses import FileResponse
-from enum import Enum
 from pydantic import BaseModel
 
 
 from pywaveai.worker_api import worker_api
 
 logger = getLogger(__name__)
-
-
-class TaskStatus(str, Enum):
-    draft = "draft"
-    scheduled = "scheduled"
-    in_progress = "in_progress"
-    completed = "completed"
-    failed = "failed"
 
 
 class TaskStatusResponse(BaseModel):
@@ -36,67 +23,27 @@ class FileInfo(BaseModel):
     filename: str
 
 
-class Task(BaseTask):
-    task_url: str
-    error: Optional[str] = None
-    result: Optional[dict] = None
-    status: TaskStatus = TaskStatus.draft
-
-    def set_completed(self, result):
-        self.result = result
-        self.status = TaskStatus.completed
-
-    def set_failed(self, error):
-        self.error = error
-        self.status = TaskStatus.failed
-
-
-result_dir = f'/tmp/http_api/results'
-
-
-class AICTaskIOManager(TaskIOManager):
-    def __init__(self) -> None:
-        super().__init__()
-
-        self.download_client = AsyncClient()
-
-    async def mark_task_failed(self, task: Task, error: Exception):
-        logger.error(f"Task {task.type} {task.id} failed")
-        task.set_failed(str(error))
-        with open(f'{result_dir}/{task.id}/error.txt', 'w') as f:
-            f.write(str(error))
-
-    async def mark_task_completed(self, task: Task, result: TaskResult):
-        logger.info(f"Task {task.type} {task.id} completed")
-        task.set_completed(result)
-        with open(f'{result_dir}/{task.id}/result.json', 'w') as f:
-            f.write(result.model_dump_json(indent=2))
-
-    async def download_bytes(self, task: Task, url: str) -> bytes:
-        if url.startswith('http'):
-            response = await self.download_client.get(url)
-            response.raise_for_status()
-            return await response.aread()
-        else:
-            with open(f'{result_dir}/{task.id}/{url}', 'rb') as f:
-                return f.read()
-
-    async def upload_bytes(self, task: Task, filename: str, byte_array: bytes) -> str:
-        tmp_dir = f'{result_dir}/{task.id}'
-        with open(f'{tmp_dir}/{filename}', 'wb') as f:
-            f.write(byte_array)
-
-        return f'{task.task_url}/file/{filename}'
-
-
 class HTTPTaskSource(TaskSource):
-    def __init__(self, supported_tasks: list[TaskExectionInfo], **kwargs) -> None:
+    def __init__(self, supported_tasks: list[TaskExectionInfo], task_io_manager: HTTPTaskIOManager=None, **kwargs) -> None:
         super().__init__(supported_tasks, **kwargs)
-        self.task_io_manager = AICTaskIOManager()
+        self.task_io_manager = task_io_manager or HTTPTaskIOManager()
+        
         self.supported_tasks_dict = {
             task.task_name: task for task in supported_tasks}
+        
+        logger.info(f"Supported tasks: {list(self.supported_tasks_dict.keys())}")
 
         self.tasks: Dict[str, Task] = {}
+
+        for ttype, tid, opt in self.task_io_manager.load_inital_tasks():
+            self.tasks[tid] = Task(
+                id=tid,
+                type=ttype,
+                options=self.supported_tasks_dict[ttype].options_type.model_validate(opt),
+                status=TaskStatus.scheduled,
+                task_url=f'http://localhost:8000/task/{ttype}/{tid}'
+            )
+
 
     async def fetch_task(self) -> Optional[TaskInfo]:
         for task in self.tasks.values():
@@ -113,12 +60,13 @@ class HTTPTaskSource(TaskSource):
         @router.post('/create')
         async def create_task(request: Request, queue_name: str = 'default'):
             id = str(len(self.tasks))
-            self.tasks[id] = Task(
+            task = Task(
                 id=id,
                 type=task_type.task_name,
                 task_url=f'{request.base_url}task/{task_type.task_name}/{id}'
             )
-            os.makedirs(f'{result_dir}/{id}', exist_ok=True)
+            await self.task_io_manager.create_task(task)
+            self.tasks[id] = task
             return TaskStatusResponse(id=id, status=TaskStatus.draft)
 
         @router.post('/{id}/file/new')
@@ -130,13 +78,16 @@ class HTTPTaskSource(TaskSource):
 
         @router.put('/{id}/file/{filename}')
         async def upload_file(id: str, filename: str, file: bytes = File(...)):
-            with open(f'{result_dir}/{id}/{filename}', 'wb') as f:
+            if id not in self.tasks:
+                raise HTTPException(status_code=404, detail="Task not found")
+            with open(self.task_io_manager.path_for_file(self.tasks[id], filename), 'wb') as f:
                 f.write(file)
 
         @router.get('/{id}/file/{filename}')
         async def download_file(id: str, filename: str):
-            return FileResponse(f'{result_dir}/{id}/{filename}')
-
+            if id not in self.tasks:
+                raise HTTPException(status_code=404, detail="Task not found")
+            return FileResponse(self.task_io_manager.path_for_file(self.tasks[id], filename))
         
         @router.post('/{id}/schedule', response_model=TaskStatusResponse)
         async def schedule_task(id: str, options: task_type.options_type):
@@ -149,9 +100,6 @@ class HTTPTaskSource(TaskSource):
             
             task.options = options
             task.status = TaskStatus.scheduled
-
-            with open(f'{result_dir}/{id}/options.json', 'w') as f:
-                f.write(options.model_dump_json(indent=2))
 
             return TaskStatusResponse(id=id, status=TaskStatus.scheduled)
 

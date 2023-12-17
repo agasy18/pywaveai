@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from inspect import signature
 from pywaveai.task import TaskResult, TaskOptions
 from .worker_api import worker_api
+from .testing_io_manager import TestIOManager
 
 import logging
 
@@ -27,6 +28,7 @@ class WaveWorkerSettings(BaseSettings):
     WORKER_LOG_LEVEL: str = "info"
     WORKER_RELOAD: bool = True
     WORKER_TITLE: str = aic_settings.NODE_ID or "WaveAI Worker"
+    TEST: str = ""
 
     DEPLOYMENT_POSTFIX: str = '_dev'
 
@@ -37,10 +39,7 @@ class WaveWorkerSettings(BaseSettings):
 settings = WaveWorkerSettings()
 
 
-_default_sources = [
-    HTTPTaskSource
-]
-
+_default_sources = [HTTPTaskSource]
 if aic_settings.API_BASE_URL and aic_settings.API_KEY and aic_settings.NODE_ID:
     _default_sources.append(AICTaskSource)
 else:
@@ -56,6 +55,11 @@ class WaveWorker(object):
                  sources: list[TaskSource] = _default_sources,
                  extensions: list = default_extantions):
         self.scheduler_class = scheduler_class
+        if settings.TEST:
+            logger.info("TEST MODE")
+            def create_test_source(supported_tasks: list[TaskExectionInfo], **kwargs):
+                return HTTPTaskSource(supported_tasks, task_io_manager=TestIOManager(settings.TEST), **kwargs)
+            sources = [create_test_source]
         self.sources = sources
         self.extensions = extensions
         self.supported_tasks = []
