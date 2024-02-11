@@ -3,6 +3,7 @@ from typing import Any, Optional, Dict
 from pydantic import Field
 from PIL import Image
 from pywaveai import download_image, upload_image
+import pywaveai
 
 class EchoTaskOptions(pywaveai.TaskOptions):
     message: str
@@ -50,5 +51,10 @@ def echo_task(task: EchoTaskOptions) -> EchoResult:
 
 worker.register_task("echo", echo_task)
 
-if __name__ == "__main__":
-    worker.run()
+if pywaveai.app.settings.DEPLOYMENT_POSTFIX and not pywaveai.app.settings.TEST:
+    app = worker.build_http_api()
+    if __name__ == "__main__":
+        worker.run('main:app')
+else:
+    if __name__ == "__main__":
+        worker.run()
