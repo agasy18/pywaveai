@@ -36,7 +36,7 @@ class TestIOManager(HTTPTaskIOManager):
             except Exception as e:
                 logger.exception(e)
                 logger.error(f"Failed to load options for task {d}")
-                TestFialdException(e)
+                raise TestFialdException(e)
             tid = d
             task_type = d.split('-')[0]
             task = (task_type, tid, options)
