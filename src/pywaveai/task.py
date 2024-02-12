@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 
 class TaskOptions(BaseModel):
     files: Dict[str, str] = Field(
-        default_factory=dict, description="Files to be used by the task")
+        default_factory=dict, description="Files to be used by the task", examples=[{}])
 
 
 class TaskResult(BaseModel):
