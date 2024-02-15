@@ -22,7 +22,11 @@ class TaskIOManager(ABC):
 
     async def download_file(self, task: Task, url: str) -> str:
         byte_array = await self.download_bytes(task, url)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=url.split('.')[-1]) as f:
+        ext = ''
+        parts = url.split('?')[0].split('.')
+        if len(parts) > 1:
+            ext = parts[-1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext as f:
             await asyncio.to_thread(f.write, byte_array)
 
         return f.name
