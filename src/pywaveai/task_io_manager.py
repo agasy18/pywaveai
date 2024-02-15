@@ -26,7 +26,7 @@ class TaskIOManager(ABC):
         parts = url.split('?')[0].split('.')
         if len(parts) > 1:
             ext = parts[-1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext as f:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as f:
             await asyncio.to_thread(f.write, byte_array)
 
         return f.name
