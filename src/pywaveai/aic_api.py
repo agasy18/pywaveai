@@ -127,7 +127,7 @@ class AICTaskIOManager(TaskIOManager):
         file_url = response.json()['url']
             
         logger.debug(f"Uploading {filename} to {file_url}")
-        response = await self.upload_client.put(file_url, data=byte_array)
+        response = await self.upload_client.put(file_url, data=byte_array, timeout=120)
         raise_for_status(response)
         return filename
     
