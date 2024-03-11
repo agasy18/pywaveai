@@ -27,7 +27,9 @@ dependencies = [
   "python-multipart",
   "pillow",
   "pydantic-settings==2.1.0",
-  "uvicorn[standard]"
+  "uvicorn[standard]",
+  "testfixtures",
+  "filelock"
 ]
 
 [project.urls]

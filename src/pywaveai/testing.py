@@ -44,7 +44,7 @@ def _test_processor(task: Task, task_dir: str) -> bool:
             compare(result, expected_result)
             return True
         except Exception as e:
-            logger.error(f"Task {task.id} due to result mismatch: {e}, task.options: {task.options}")
+            logger.error(f"Task {task.id} due to result mismatch: \n{e},\n task.options: {task.options}")
             return False
     
     
