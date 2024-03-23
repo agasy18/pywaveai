@@ -32,7 +32,7 @@ see test api under http://localhost:8000/docs
 
 ### Runing echo tests 
 ```bash
-TEST='samples/echo/tests' python samples/echo.py
+TEST='samples/echo/tests' python samples/echo/main.py
 ```
 
 pywaveai using environment variables for configuration enable test mode. The argument list is not used to avoid conflicts with application arguments.

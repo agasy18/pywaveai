@@ -31,6 +31,18 @@ class Task(TaskBase):
     error: str
     result: str
 
+class AICAPIError(Exception):
+    def __init__(self, status_code: int, message: str, inner: Exception = None):
+        self.status_code = status_code
+        self.message = message
+        self.inner = inner
+        super().__init__(message)
+
+    def __str__(self):
+        if self.inner is None:
+            return f"AICAPIError {self.status_code}: {self.message}"
+        return f"AICAPIError {self.status_code}: {self.message} {type(self.inner).__name__}: {self.inner}"
+
 def raise_for_status(response):
     try:
         response.raise_for_status()
@@ -43,6 +55,13 @@ def raise_for_status(response):
         raise e
 
 
+def _try_pase_error_core(e: Exception, default: int = 508) -> int:
+    status_code = getattr(e, 'status_code', 
+        getattr(e, 'code'), None)
+    if isinstance(status_code, int):
+        return status_code
+    return default
+        
 class AICTaskIOManager(TaskIOManager):
     def __init__(self) -> None:
         self.init_download_client()
@@ -69,8 +88,8 @@ class AICTaskIOManager(TaskIOManager):
         for retry in range(3):
             try:
                 response = await self.api_client.post(task.error, json={
-                    "code": 508,
-                    "message": str(error)
+                    "code": _try_pase_error_core(error),
+                    "message": f"{type(error).__name__}: {error}"
                 })
 
                 raise_for_status(response)
@@ -125,10 +144,22 @@ class AICTaskIOManager(TaskIOManager):
         })
         raise_for_status(response)
         file_url = response.json()['url']
-            
+        
         logger.debug(f"Uploading {filename} to {file_url}")
-        response = await self.upload_client.put(file_url, data=byte_array, timeout=120)
-        raise_for_status(response)
+        last_error = None
+        for retry in range(3):
+            try:
+                response = await self.upload_client.put(file_url, data=byte_array, timeout=120)
+                raise_for_status(response)
+            except Exception as e:
+                logger.error(f"Failed to upload {filename} to {file_url}")
+                logger.exception(e)
+                last_error = e
+                await asyncio.sleep(1)
+            else:
+                break
+        if last_error is not None:
+            raise AICAPIError(500, f"Failed to upload {filename} to {file_url} after 3 retries", last_error)
         return filename
     
     async def fetch_new_task(self, supported_tasks: list[TaskExectionInfo]) -> Task:
