@@ -133,10 +133,22 @@ class AICTaskIOManager(TaskIOManager):
                 await self.mark_task_failed(task, last_error)
 
     async def download_bytes(self, task: Task, url: str) -> bytes:
-        response = await self.download_client.get(url)
-        raise_for_status(response)
-        bytes_array = await response.aread()
-        return bytes_array
+        last_error = None
+        for retry in range(3):
+            try:
+                response = await self.download_client.get(url)
+                raise_for_status(response)
+                bytes_array = await response.aread()
+                return bytes_array
+            except Exception as e:
+                logger.error(f"Failed to download {url}")
+                logger.exception(e)
+                self.init_download_client()
+                last_error = e
+                await asyncio.sleep(1)
+        assert last_error is not None
+        raise AICAPIError(500, f"Failed to download {url} after 3 retries", last_error)
+        
 
     async def upload_bytes(self, task: Task, filename: str, byte_array: bytes) -> str:
         response = await self.api_client.post(task.new_file, json={
@@ -155,6 +167,7 @@ class AICTaskIOManager(TaskIOManager):
                 logger.error(f"Failed to upload {filename} to {file_url}")
                 logger.exception(e)
                 last_error = e
+                self.init_upload_client()
                 await asyncio.sleep(1)
             else:
                 break
