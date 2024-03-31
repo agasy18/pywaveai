@@ -57,7 +57,7 @@ def raise_for_status(response):
 
 def _try_pase_error_core(e: Exception, default: int = 508) -> int:
     status_code = getattr(e, 'status_code', 
-        getattr(e, 'code'), None)
+        getattr(e, 'code', None), None)
     if isinstance(status_code, int):
         return status_code
     return default
